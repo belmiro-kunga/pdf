@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extrator de Conteúdo PDF</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { background-color: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1 { color: #333; text-align: center; }
+        .upload-section, .results-section { margin-bottom: 30px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+        input[type="file"] { margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: calc(100% - 22px); }
+        button[type="submit"], .download-button {
+            background-color: #007bff; color: white; padding: 10px 15px; border: none;
+            border-radius: 4px; cursor: pointer; font-size: 16px;
+        }
+        button[type="submit"]:hover, .download-button:hover { background-color: #0056b3; }
+        textarea {
+            width: 98%; min-height: 200px; padding: 10px; border: 1px solid #ccc;
+            border-radius: 4px; font-family: monospace; font-size: 14px;
+            margin-bottom: 20px;
+        }
+        .image-gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+        .image-gallery figure {
+            display: flex; flex-direction: column; align-items: center;
+            border: 1px solid #ddd; padding: 5px; border-radius: 4px; background-color: #f9f9f9;
+        }
+        .image-gallery img {
+            max-width: 150px; max-height: 150px; 
+            border-radius: 4px; cursor: pointer; object-fit: contain; /* Changed to contain */
+            margin-bottom: 5px;
+        }
+        .image-gallery figcaption { font-size: 0.8em; text-align: center; }
+        .image-gallery figcaption a { text-decoration: none; color: #007bff; }
+        .image-gallery figcaption a:hover { text-decoration: underline; }
+        .processing-message { text-align: center; font-style: italic; color: #555; margin-top: 10px;}
+        .error-message { color: red; text-align: center; margin-bottom: 15px; }
+
+        /* Estilos para Flash Messages */
+        .flash-messages { margin-bottom: 15px; }
+        .alert {
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 1px solid transparent;
+            border-radius: 4px;
+        }
+        .alert-error { color: #721c24; background-color: #f8d7da; border-color: #f5c6cb; }
+        .alert-success { color: #155724; background-color: #d4edda; border-color: #c3e6cb; }
+        .alert-info { color: #0c5460; background-color: #d1ecf1; border-color: #bee5eb; }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Extrator de Conteúdo de PDF</h1>
+
+        <div class="upload-section">
+            <h2>1. Faça o Upload do seu PDF</h2>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            <form method="POST" enctype="multipart/form-data" id="uploadForm">
+                <label for="pdf_file">Selecionar arquivo PDF:</label>
+                <input type="file" name="pdf_file" id="pdf_file" accept=".pdf" required>
+                <button type="submit">Enviar</button>
+                <button type="button" id="clearButton" style="margin-left: 10px; background-color: #6c757d; color: white; padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">Limpar</button>
+            </form>
+            <div id="processingMessage" class="processing-message" style="display:none;">
+                Aguarde, processando seu PDF...
+            </div>
+        </div>
+
+        {% if processed %}
+        <div class="results-section">
+            <h2>2. Conteúdo Extraído do arquivo: {{ filename }}</h2>
+            
+            <h3>Texto:</h3>
+            <textarea id="extractedText" name="extracted_text">{{ extracted_text }}</textarea> 
+            
+            <h3>Imagens:</h3>
+            {% if images %}
+                <div class="image-gallery">
+                    {% for image_info in images %}
+                    <figure>
+                        <img src="{{ url_for('send_extracted_image', filename=image_info.filename) }}" 
+                             alt="Imagem {{ loop.index }}" 
+                             onclick="openImageModal('{{ url_for('send_extracted_image', filename=image_info.filename) }}')">
+                        <figcaption>
+                            <a href="{{ url_for('send_extracted_image', filename=image_info.filename) }}" 
+                               download="{{ image_info.filename }}">Baixar</a>
+                        </figcaption>
+                    </figure>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p>Nenhuma imagem foi extraída ou encontrada neste PDF.</p>
+            {% endif %}
+
+            <div style="margin-top: 20px; text-align: center;">
+                <form method="POST" action="{{ url_for('download_result', original_pdf_name=filename) }}" id="downloadForm" style="display: inline-block; margin-right: 10px;">
+                    <input type="hidden" name="extracted_text_for_download" id="extractedTextForDownloadDocx">
+                    <button type="submit" name="download_type" value="docx" class="download-button">Baixar como .docx</button>
+                </form>
+                <form method="POST" action="{{ url_for('download_result', original_pdf_name=filename) }}" id="downloadFormZip" style="display: inline-block;">
+                    <input type="hidden" name="extracted_text_for_download" id="extractedTextForDownloadZip">
+                    <button type="submit" name="download_type" value="txt_images" class="download-button">Baixar como .txt + Imagens</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Modal para visualização de imagem -->
+    <div id="imageModal" style="display:none; position:fixed; z-index:100; padding-top:50px; left:0; top:0; width:100%; height:100%; overflow:auto; background-color:rgba(0,0,0,0.9);">
+        <span onclick="document.getElementById('imageModal').style.display='none'" 
+              style="position:absolute; top:15px; right:35px; color:#f1f1f1; font-size:40px; font-weight:bold; cursor:pointer;">&times;</span>
+        <img id="modalImageContent" style="margin:auto; display:block; max-width:80%; max-height:80%;">
+        <div id="caption" style="text-align:center; color:#ccc; padding:10px 0;"></div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', function(event) {
+            const pdfFile = document.getElementById('pdf_file').files[0];
+            if (pdfFile) {
+                if (pdfFile.type !== "application/pdf") {
+                    alert("Erro: Por favor, selecione um arquivo .pdf.");
+                    event.preventDefault(); 
+                    return;
+                }
+                document.getElementById('processingMessage').style.display = 'block';
+            } else {
+                alert("Erro: Nenhum arquivo selecionado.");
+                event.preventDefault(); 
+            }
+        });
+
+        function openImageModal(src) {
+            document.getElementById('modalImageContent').src = src;
+            document.getElementById('imageModal').style.display = 'block';
+        }
+
+        const downloadFormDocx = document.getElementById('downloadForm');
+        if (downloadFormDocx) {
+            downloadFormDocx.addEventListener('submit', function() {
+                document.getElementById('extractedTextForDownloadDocx').value = document.getElementById('extractedText').value;
+            });
+        }
+
+        const downloadFormZip = document.getElementById('downloadFormZip');
+        if (downloadFormZip) {
+            downloadFormZip.addEventListener('submit', function() {
+                document.getElementById('extractedTextForDownloadZip').value = document.getElementById('extractedText').value;
+            });
+        }
+        document.getElementById('clearButton').addEventListener('click', function() {
+            window.location.href = '/'; // Redireciona para a página inicial para limpar tudo
+        });
+    </script>
+</body>
+</html>
